@@ -25,17 +25,9 @@ Authentication is handled automatically — **OAuth** for MCP-based workflows, *
 
 | Skill | Triggers when you mention... |
 |-------|------------------------------|
-| **jfrog-artifactory** | artifactory, repository, artifact, deploy, docker registry, build info, AQL, replication, federation |
-| **jfrog-security** | xray, vulnerability, CVE, scan, policy, watch, violation, SBOM, SAST, secrets detection |
-| **jfrog-access** | access token, permission, user, group, project, RBAC, authentication, authorization |
-| **jfrog-distribution** | distribution, release bundle, promote, environment, edge node, release lifecycle, evidence |
-| **jfrog-curation** | curation, package firewall, blocked package, curated repository, waiver, supply chain |
-| **jfrog-apptrust** | apptrust, application entity, application version, trusted release, promote version, rollback |
-| **jfrog-runtime** | runtime, runtime cluster, running images, runtime sensor, container monitoring, node health |
-| **jfrog-mission-control** | mission control, JPD, platform deployment, license, proxy, deployment health |
-| **jfrog-workers** | worker, serverless, event hook, TypeScript worker, BEFORE_DOWNLOAD, custom logic |
-| **jfrog-cli** | jf command, jfrog cli, jf rt, jf audit, jf scan, jf docker, file spec |
-| **jfrog-patterns** | pattern, best practice, architecture, get started, CI integration, multi-site, AppTrust |
+| **jfrog** | any JFrog product, artifactory, xray, security, access token, curation, distribution, release bundle, apptrust, runtime, mission control, worker, jf command, pattern, best practice |
+
+Single unified skill (`skills/jfrog/`) with a router (`SKILL.md`) and 22 supporting reference and pattern files covering Artifactory, Security/Xray, Access, Distribution, Curation, AppTrust, Runtime, Mission Control, Workers, CLI, and architectural patterns.
 
 ## MCP Capabilities
 
