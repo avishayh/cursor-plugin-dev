@@ -11,7 +11,7 @@ JFrog Platform integration for [Cursor](https://cursor.com) — artifact managem
 | **Rule** | `plugins/jfrog/rules/jfrog-security.mdc` | Supply-chain security practices for dependency files |
 | **Agent** | `plugins/jfrog/agents/supply-chain-security.md` | Dependency audit for CVEs, licenses, and curation |
 | **Hook** | `plugins/jfrog/hooks/hooks.json` + `plugins/jfrog/scripts/inject-instructions.mjs` | `sessionStart` hook gated by the `JF_MCP_GATEWAY_FORCE_ENABLE` env var: when set to `"true"` it injects `templates/jfrog-mcp-management.md` as `additional_context`; otherwise it emits `{}` and stays silent |
-| **Template** | `plugins/jfrog/templates/jfrog-mcp-management.md` | Gateway governance rule body — loaded by the hook above (not auto-discovered as a Cursor rule) only when `JF_MCP_GATEWAY_FORCE_ENABLE=true`. Teaches the agent how to add, remove, and list MCP servers exclusively through `npx @jfrog/mcp-gateway`. |
+| **Template** | `plugins/jfrog/templates/jfrog-mcp-management.md` | Gateway governance rule body — loaded by the hook above (not auto-discovered as a Cursor rule) only when `JFROG_MCP_GATEWAY_FORCE_ENABLE=true` or when the administration AI/ML settings are enabled via the platform. Teaches the agent how to add, remove, and list MCP servers exclusively through `npx @jfrog/mcp-gateway`. |
 
 ## Prerequisites
 
