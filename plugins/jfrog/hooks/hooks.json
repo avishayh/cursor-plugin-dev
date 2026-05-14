@@ -4,7 +4,7 @@
     "sessionStart": [
       {
         "command": "node ./scripts/inject-instructions.mjs",
-        "timeout": 30
+        "timeout": 7
       }
     ]
   }
