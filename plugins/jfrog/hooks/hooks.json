@@ -5,6 +5,10 @@
       {
         "command": "node \"./scripts/inject-instructions.mjs\"",
         "timeout": 7
+      },
+      {
+        "command": "node \"./scripts/cursor-session-start.mjs\" package-guard",
+        "timeout": 7
       }
     ]
   }
