@@ -1,0 +1,22 @@
+{
+  "repo": "JFROG/jfrog-agent-hooks",
+  "pin": "jfrog-agent-hooks/v0.5.1",
+  "copies": [
+    {
+      "src": "scripts/core",
+      "dest": "scripts/core"
+    },
+    {
+      "src": "scripts/cursor-session-start.mjs",
+      "dest": "scripts/cursor-session-start.mjs"
+    },
+    {
+      "src": "scripts/claude-session-start.mjs",
+      "dest": "scripts/claude-session-start.mjs"
+    },
+    {
+      "src": "package-guard",
+      "dest": "package-guard"
+    }
+  ]
+}
