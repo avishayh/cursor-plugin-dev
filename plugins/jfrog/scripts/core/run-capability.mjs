@@ -5,7 +5,7 @@
 // multiple capabilities in one process.
 //
 // Entry path convention (dev repo and plugin copy are identical):
-//   {pluginRoot}/{name}/scripts/{name}/index.mjs
+//   {pluginRoot}/{name}/scripts/index.mjs
 
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -25,7 +25,7 @@ const ALLOWLIST = new Set(["package-guard"]);
  * @returns {string} absolute path to index.mjs
  */
 export function capabilityEntryPath(name) {
-  return path.join(PLUGIN_ROOT, name, "scripts", name, "index.mjs");
+  return path.join(PLUGIN_ROOT, name, "scripts", "index.mjs");
 }
 
 /** @returns {(() => Promise<module>) | null} */
