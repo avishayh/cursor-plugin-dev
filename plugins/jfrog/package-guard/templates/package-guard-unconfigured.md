@@ -4,8 +4,8 @@ Your organization routes every package fetch through JFrog Artifactory, but rout
 cannot run yet — `jf` has no configured server. Package managers still point at
 **public** registries until setup completes.
 
-**Do not run direct package installs** while routing is not ready. When asked to
-install, tell the user routing is blocked and complete setup first.
+**Do not run direct package installs** (including `docker pull` / `docker run`) while routing is not ready. When asked to
+install or pull images, tell the user routing is blocked and complete setup first.
 
 ## Read this first
 

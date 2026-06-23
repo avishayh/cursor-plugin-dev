@@ -19,12 +19,12 @@ import {
   prepareSessionResolve,
   PACKAGE_TYPES,
 } from "./resolver.mjs";
-import { createLogger } from "../../../scripts/core/logger.mjs";
+import { createLogger } from "../../scripts/core/logger.mjs";
 
 const log = createLogger("render-instruction");
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_DIR = path.join(here, "../../templates");
+const TEMPLATES_DIR = path.join(here, "../templates");
 const ACTIVE_TEMPLATE = "package-guard.md";
 const ENFORCE_TEMPLATE = "package-guard-unconfigured.md";
 
