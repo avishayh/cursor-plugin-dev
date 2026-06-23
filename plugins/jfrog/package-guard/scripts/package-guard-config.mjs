@@ -8,7 +8,7 @@
 
 import process from "node:process";
 
-import { createLogger } from "../../../scripts/core/logger.mjs";
+import { createLogger } from "../../scripts/core/logger.mjs";
 
 const log = createLogger("package-guard-config");
 

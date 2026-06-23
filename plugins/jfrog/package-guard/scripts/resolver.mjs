@@ -15,8 +15,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { createLogger } from "../../../scripts/core/logger.mjs";
-import { getPlatformIdentity } from "../../../scripts/core/jf-identity.mjs";
+import { createLogger } from "../../scripts/core/logger.mjs";
+import { getPlatformIdentity } from "../../scripts/core/jf-identity.mjs";
 import { fetchPackageGuardConfig } from "./package-guard-config.mjs";
 import { pickWorkspaceConfigRoot, loadWorkspaceConfig } from "./workspace-config.mjs";
 
