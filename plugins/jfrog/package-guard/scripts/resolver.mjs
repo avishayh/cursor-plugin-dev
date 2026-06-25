@@ -5,9 +5,9 @@
 // Identity comes from a separate local `jf config export` (always runs; cheap).
 // This module only controls Artifactory HTTP:
 //   1. Valid local cache ~/.jfrog/skills-cache/package-guard.json → no HTTP
-//   2. Else probe static candidate list (GET …/api/repositories/{key})
-//   3. Optional org admin config GET (disabled by default; see package-guard-config.mjs)
-//   4. Write full snapshot to cache file (7-day TTL)
+//   2. Else read defaultGlobalRepos from ~/.jfrog/agents.json
+//   3. Optional verify via GET …/api/repositories/{key} (verifyRepos, default true)
+//   4. Write snapshot to cache file (TTL from agents.json cacheTtlDays)
 
 import { readFile, writeFile, mkdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -16,42 +16,31 @@ import path from "node:path";
 import process from "node:process";
 
 import { createLogger } from "../../scripts/core/logger.mjs";
+import { getAgentsConfigMtimeMs, loadAgentsConfig } from "../../scripts/core/agents-config.mjs";
 import { getPlatformIdentity } from "../../scripts/core/jf-identity.mjs";
-import { fetchPackageGuardConfig } from "./package-guard-config.mjs";
+import { PACKAGE_TYPES, repoMatchesPackageType } from "./repo-types.mjs";
 import { pickWorkspaceConfigRoot, loadWorkspaceConfig } from "./workspace-config.mjs";
 
 const log = createLogger("resolver");
 
-const CACHE_DIR = path.join(homedir(), ".jfrog", "skills-cache");
-const CACHE_FILE = path.join(CACHE_DIR, "package-guard.json");
-const LEGACY_CACHE_FILE = path.join(CACHE_DIR, "package-guard-cache.json");
+function cacheDir() {
+  return path.join(homedir(), ".jfrog", "skills-cache");
+}
+
+function cacheFile() {
+  return path.join(cacheDir(), "package-guard.json");
+}
+
+function legacyCacheFile() {
+  return path.join(cacheDir(), "package-guard-cache.json");
+}
+
 const CACHE_SCHEMA_VERSION = 1;
 
-/** Cache TTL — design doc target; enforced on read. */
+/** Default cache TTL in ms (7 days) — used when agents.json omits cacheTtlDays. */
 export const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export const PACKAGE_TYPES = ["npm", "pypi", "maven", "go", "docker", "helm", "nuget"];
-
-// Static candidate repo keys when package-guard config is absent or incomplete.
-const STANDARD_REPO_KEYS = {
-  npm: ["npm-virtual"],
-  pypi: ["pypi-virtual"],
-  maven: ["maven-virtual", "libs-release"],
-  go: ["go-virtual"],
-  docker: ["docker-virtual"],
-  helm: ["helm-virtual"],
-  nuget: ["nuget-virtual"],
-};
-
-const TYPE_PACKAGE_TYPE = {
-  npm: "npm",
-  pypi: "pypi",
-  maven: "maven",
-  go: "go",
-  docker: "docker",
-  helm: "helm",
-  nuget: "nuget",
-};
+export { PACKAGE_TYPES };
 
 /** In-process snapshot after first resolve pass in this hook invocation. */
 const SESSION = {
@@ -71,7 +60,7 @@ function effectiveServerId(hint) {
 
 function packageResolveSource(serverId, { via } = {}) {
   const suffix = via ? ` via=${via}` : "";
-  return `package-guard:${CACHE_FILE}#${serverId}${suffix}`;
+  return `package-guard:${cacheFile()}#${serverId}${suffix}`;
 }
 
 /** Last session-wide resolve metadata (for inject-instructions EVENT log). */
@@ -101,30 +90,33 @@ function urlFor(type, repoKey, base) {
 }
 
 async function readCacheFile() {
-  for (const file of [CACHE_FILE, LEGACY_CACHE_FILE]) {
+  const primary = cacheFile();
+  for (const file of [primary, legacyCacheFile()]) {
     try {
       const raw = await readFile(file, "utf8");
-      return { data: JSON.parse(raw), file: CACHE_FILE };
+      return { data: JSON.parse(raw), file: primary };
     } catch {
       // try next path
     }
   }
-  return { data: null, file: CACHE_FILE };
+  return { data: null, file: primary };
 }
 
 async function writeCacheFile(root) {
+  const file = cacheFile();
   const payload = {
     schemaVersion: CACHE_SCHEMA_VERSION,
     servers: root.servers ?? {},
   };
-  const creating = !existsSync(CACHE_FILE);
-  await mkdir(CACHE_DIR, { recursive: true });
-  await writeFile(CACHE_FILE, JSON.stringify(payload, null, 2));
+  const creating = !existsSync(file);
+  await mkdir(cacheDir(), { recursive: true });
+  await writeFile(file, JSON.stringify(payload, null, 2));
   if (creating) {
-    log.info("created global cache file", { cache: CACHE_FILE });
+    log.info("created global cache file", { cache: file });
   }
-  if (existsSync(LEGACY_CACHE_FILE)) {
-    await unlink(LEGACY_CACHE_FILE).catch(() => {});
+  const legacy = legacyCacheFile();
+  if (existsSync(legacy)) {
+    await unlink(legacy).catch(() => {});
   }
 }
 
@@ -134,13 +126,17 @@ function normalizeServerEntry(entry) {
     repositories: { ...entry.repositories },
     cached_at: entry.cached_at,
     source: entry.source,
+    agentsConfigMtimeMs: entry.agentsConfigMtimeMs,
   };
 }
 
-function isEntryFresh(entry) {
+function isEntryFresh(entry, agentsConfigMtimeMs, cacheTtlDays) {
   if (!entry?.cached_at) return false;
+  if (cacheTtlDays === 0) return false;
+  if (entry.agentsConfigMtimeMs !== agentsConfigMtimeMs) return false;
+  const ttlMs = cacheTtlDays * 24 * 60 * 60 * 1000;
   const age = Date.now() - new Date(entry.cached_at).getTime();
-  return age >= 0 && age < CACHE_TTL_MS;
+  return age >= 0 && age < ttlMs;
 }
 
 /** Normalize on-disk cache to `{ schemaVersion, servers }` (migrates legacy flat layout). */
@@ -172,36 +168,20 @@ async function fetchRepoConfig(repoKey) {
   const id = identityOrNull();
   if (!id) return null;
   const url = `${id.url}/artifactory/api/repositories/${encodeURIComponent(repoKey)}`;
-  log.debug("probing repo", { repoKey, url });
+  log.debug("verifying repo", { repoKey, url });
   try {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${id.token}`, Accept: "application/json" },
     });
     if (!res.ok) {
-      log.debug("repo probe miss", { repoKey, status: res.status });
+      log.debug("repo verify miss", { repoKey, status: res.status });
       return null;
     }
     return await res.json();
   } catch (err) {
-    log.warn("repo probe threw", { repoKey, error: err?.message ?? String(err) });
+    log.warn("repo verify threw", { repoKey, error: err?.message ?? String(err) });
     return null;
   }
-}
-
-function repoMatchesPackageType(config, type) {
-  const expected = TYPE_PACKAGE_TYPE[type];
-  if (!expected || !config?.packageType) return true;
-  return String(config.packageType).toLowerCase() === expected;
-}
-
-async function probeStandardRepo(type) {
-  const candidates = STANDARD_REPO_KEYS[type];
-  if (!candidates?.length) return null;
-  for (const repoKey of candidates) {
-    const config = await fetchRepoConfig(repoKey);
-    if (config && repoMatchesPackageType(config, type)) return repoKey;
-  }
-  return null;
 }
 
 function buildResolveMeta(serverId, entry, { via, cacheFile }) {
@@ -232,37 +212,39 @@ async function refreshServerCache(serverId) {
   const id = identityOrNull();
   const base = id ? `${id.url}/artifactory` : "";
   const repositories = {};
-  const sourcesUsed = new Set();
-
-  const guardConfig = id ? await fetchPackageGuardConfig(id) : null;
-  const configuredRepos = guardConfig?.repositories ?? {};
+  const pg = loadAgentsConfig().packageGuard;
+  const verifyRepos = pg.verifyRepos;
+  const adminRepos = pg.defaultGlobalRepos ?? {};
+  const agentsConfigMtimeMs = getAgentsConfigMtimeMs();
 
   for (const type of PACKAGE_TYPES) {
-    const configuredKey = configuredRepos[type];
-    if (configuredKey) {
-      repositories[type] = configuredKey;
-      sourcesUsed.add("guard-config");
-      log.debug("resolved from package-guard config", { type, repoKey: configuredKey });
+    const repoKey = adminRepos[type];
+    if (!repoKey) {
+      log.debug("unconfigured type", { type });
       continue;
     }
-    const probed = await probeStandardRepo(type);
-    if (probed) {
-      repositories[type] = probed;
-      sourcesUsed.add("probe");
-      log.debug("resolved from standard probe", { type, repoKey: probed });
+
+    if (verifyRepos) {
+      const config = await fetchRepoConfig(repoKey);
+      if (!config || !repoMatchesPackageType(config, type)) {
+        log.warn("repo verify failed", { type, repoKey, serverId });
+        continue;
+      }
+      repositories[type] = repoKey;
+      log.debug("resolved from agents.json (verified)", { type, repoKey });
     } else {
-      log.warn("unresolved", { type, hint: "ask user via jfrog-setup-package-managers" });
+      repositories[type] = repoKey;
+      log.debug("resolved from agents.json (trusted)", { type, repoKey });
     }
   }
 
-  let source = "probe";
-  if (sourcesUsed.has("guard-config") && sourcesUsed.has("probe")) source = "mixed";
-  else if (sourcesUsed.has("guard-config")) source = "guard-config";
+  const source = verifyRepos ? "verified" : "agents-config";
 
   const entry = {
     repositories,
     cached_at: new Date().toISOString(),
     source,
+    agentsConfigMtimeMs,
   };
 
   const { data: cacheRoot } = await readCacheFile();
@@ -270,26 +252,25 @@ async function refreshServerCache(serverId) {
   root.servers[serverId] = entry;
   await writeCacheFile(root);
 
-  const via = guardConfig
-    ? sourcesUsed.has("probe")
-      ? "refresh-mixed"
-      : "refresh-guard-config"
-    : "refresh-probe";
+  const via = verifyRepos ? "refresh-verified" : "refresh-agents-config";
+  const file = cacheFile();
   SESSION.serverId = serverId;
   SESSION.byType = entryToByType(entry, base);
-  SESSION.meta = buildResolveMeta(serverId, entry, { via, cacheFile: CACHE_FILE });
+  SESSION.meta = buildResolveMeta(serverId, entry, { via, cacheFile: file });
   log.debug("cache refreshed", {
     serverId,
     source,
     resolved: Object.keys(repositories).join(","),
-    cache: CACHE_FILE,
+    cache: file,
   });
 }
 
 async function loadFreshCacheEntry(serverId) {
+  const pg = loadAgentsConfig().packageGuard;
+  const agentsConfigMtimeMs = getAgentsConfigMtimeMs();
   const { data, file } = await readCacheFile();
   const entry = normalizeServerEntry(normalizeCacheRoot(data).servers[serverId]);
-  if (!entry || !isEntryFresh(entry)) return null;
+  if (!entry || !isEntryFresh(entry, agentsConfigMtimeMs, pg.cacheTtlDays)) return null;
 
   const id = identityOrNull();
   const base = id ? `${id.url}/artifactory` : "";

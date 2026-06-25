@@ -1,18 +1,16 @@
 // Shared logger — every hook, resolver call, and feature-flag check writes here.
 //
-// Log file: ~/.jfrog/logs/package-guard.log
+// Log file: ~/.jfrog/logs/agent-hooks.log
 // Format:   <iso-timestamp>  <LEVEL>  [component]  <message>  k1=v1 k2=v2 ...
 //
 // One line per event, append-only, sync writes so short-lived hook processes
-// flush before exit. Tail with `make logs` / `tail -F ~/.jfrog/logs/package-guard.log`.
+// flush before exit. Tail with `make logs` / `tail -F ~/.jfrog/logs/agent-hooks.log`.
 //
 // Errors from the logger itself are swallowed — a misbehaving log MUST NOT
 // break the hook (otherwise the agent session breaks).
 //
-// Env:
-//   JFROG_PACKAGE_GUARD_LOG_LEVEL  silent | debug | info (default) | warn | error
-//   JFROG_PACKAGE_GUARD_LOG_FILE   override the log file path (test isolation; not
-//                            intended for humans — defaults to the path above)
+// Log level: `logLevel` in ~/.jfrog/agents.json (default info).
+// Test isolation only: JFROG_AGENT_HOOKS_LOG_FILE overrides the log path.
 //
 // Levels:
 //   silent  no output at all
@@ -28,16 +26,30 @@ import path from "node:path";
 import process from "node:process";
 import { randomBytes } from "node:crypto";
 
-const DEFAULT_LOG_DIR = path.join(homedir(), ".jfrog", "logs");
-const DEFAULT_LOG_FILE = path.join(DEFAULT_LOG_DIR, "package-guard.log");
+import { getGlobalLogLevel } from "./agents-config.mjs";
 
-const LOG_FILE = process.env.JFROG_PACKAGE_GUARD_LOG_FILE || DEFAULT_LOG_FILE;
+function defaultLogFile() {
+  return path.join(homedir(), ".jfrog", "logs", "agent-hooks.log");
+}
+
+function logFile() {
+  return process.env.JFROG_AGENT_HOOKS_LOG_FILE || defaultLogFile();
+}
 
 // `silent` is a sentinel above every numeric level — nothing matches it.
 const LEVELS = { debug: 10, info: 20, event: 25, warn: 30, error: 40, silent: 1000 };
-const envLevel = (process.env.JFROG_PACKAGE_GUARD_LOG_LEVEL || "").toLowerCase();
-const MIN_LEVEL = LEVELS[envLevel] ?? LEVELS.info;
-const DISABLED = MIN_LEVEL >= LEVELS.silent;
+
+let minLevelResolved = false;
+let minLevel = LEVELS.info;
+let disabled = false;
+
+function resolveMinLevel() {
+  if (minLevelResolved) return;
+  minLevelResolved = true;
+  const envLevel = getGlobalLogLevel();
+  minLevel = LEVELS[envLevel] ?? LEVELS.info;
+  disabled = minLevel >= LEVELS.silent;
+}
 
 // Short trace id per process — lets you correlate a single hook invocation's
 // multi-line output (resolver + feature flag + outcome).
@@ -56,11 +68,14 @@ export function setLogContext(ctx) {
 }
 
 let ensuredDir = false;
+let ensuredDirFor = "";
 function ensureDir() {
-  if (ensuredDir) return;
+  const file = logFile();
+  if (ensuredDir && ensuredDirFor === file) return;
   try {
-    mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+    mkdirSync(path.dirname(file), { recursive: true });
     ensuredDir = true;
+    ensuredDirFor = file;
   } catch {
     // ignore — write attempt below will also swallow
   }
@@ -134,9 +149,10 @@ function bracketPrefixes(kv) {
 }
 
 function write(level, component, message, kv) {
-  if (DISABLED) return;
+  resolveMinLevel();
+  if (disabled) return;
   const num = LEVELS[level] ?? LEVELS.info;
-  if (num < MIN_LEVEL) return;
+  if (num < minLevel) return;
 
   const ts = new Date().toISOString();
   const lvl = fitCol(level.toUpperCase(), COL_LEVEL);
@@ -159,7 +175,7 @@ function write(level, component, message, kv) {
 
   try {
     ensureDir();
-    appendFileSync(LOG_FILE, line);
+    appendFileSync(logFile(), line);
   } catch {
     // swallow — the hook must keep working
   }
@@ -177,7 +193,7 @@ export function createLogger(component) {
 }
 
 export function logFilePath() {
-  return LOG_FILE;
+  return logFile();
 }
 
 export function traceId() {

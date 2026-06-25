@@ -127,6 +127,11 @@ export function getPlatformIdentity() {
   return status;
 }
 
+/** Test-only — reset module cache between in-process scenarios. */
+export function clearPlatformIdentityCache() {
+  CACHE.clear();
+}
+
 // Short label for log lines / status output, e.g. "jf-config:<your-server-id>".
 export function identityLabel(identity) {
   if (!identity) return "none";

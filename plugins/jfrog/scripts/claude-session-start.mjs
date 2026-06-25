@@ -9,10 +9,12 @@
 import process from "node:process";
 
 import { runCapability } from "./core/run-capability.mjs";
+import { ensureAgentsConfigScaffold, agentsConfigLoadWarnings } from "./core/agents-config.mjs";
 import { readStdin, parseSessionId, detectHarness, parseWorkspaceRoots } from "./core/io.mjs";
-import { setLogContext } from "./core/logger.mjs";
+import { setLogContext, createLogger } from "./core/logger.mjs";
 
 const HARNESS_ID = "claude_code";
+const log = createLogger("session-start");
 
 /** @returns {string | null} JSON stdout payload, or null when there is nothing to inject. */
 function formatSessionStartStdout(text) {
@@ -50,6 +52,10 @@ async function main() {
   const sessionId = parseSessionId(stdinRaw);
   const workspaceRoots = parseWorkspaceRoots(stdinRaw);
   setLogContext({ ide: HARNESS_ID, sessionId });
+  ensureAgentsConfigScaffold();
+  for (const w of agentsConfigLoadWarnings()) {
+    log.warn(w.message, { path: w.path });
+  }
   const text = await runCapability(capability, {
     ide: HARNESS_ID,
     sessionId,

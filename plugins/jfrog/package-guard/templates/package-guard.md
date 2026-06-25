@@ -63,5 +63,6 @@ manifest → PM mapping).
 
 ## Enablement
 
-Package-guard is opt-in. Set `JFROG_PACKAGE_GUARD_ENABLED=1` in the IDE launch
-shell (or org-wide IDE env) before this policy applies.
+Package-guard is opt-in. Set `packageGuard.enabled: true` in `~/.jfrog/agents.json`.
+On first session, if that file is missing, the hook scaffolds it from the shipped
+template (`packageGuard.enabled` defaults to `false`).

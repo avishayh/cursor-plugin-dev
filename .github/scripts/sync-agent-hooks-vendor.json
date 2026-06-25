@@ -1,6 +1,6 @@
 {
   "repo": "JFROG/jfrog-agent-hooks",
-  "pin": "jfrog-agent-hooks/v0.1.1",
+  "pin": "jfrog-agent-hooks/v0.3.0",
   "copies": [
     {
       "src": "scripts/core",
@@ -17,6 +17,10 @@
     {
       "src": "package-guard",
       "dest": "package-guard"
+    },
+    {
+      "src": "assets/agents-default.json",
+      "dest": "assets/agents-default.json"
     }
   ]
 }

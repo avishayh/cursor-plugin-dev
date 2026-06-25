@@ -74,7 +74,6 @@ export function detectHarness(stdinRaw) {
 /**
  * Workspace roots for this hook invocation.
  * Cursor: workspace_roots[]. Claude: payload cwd. Fallback: process.cwd().
- * Tests: JFROG_PACKAGE_GUARD_WORKSPACE_ROOTS=/a:/b
  *
  * @param {string} [stdinRaw]
  * @returns {string[]}

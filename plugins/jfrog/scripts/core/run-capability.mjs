@@ -55,7 +55,7 @@ export async function runCapability(name, ctx = {}) {
 
   try {
     const mod = await load();
-    const cap = mod.packageGuard ?? mod.default;
+    const cap = mod.default;
     if (!cap?.sessionStart) {
       log.error("capability missing sessionStart", { name });
       return "";

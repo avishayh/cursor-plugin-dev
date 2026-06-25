@@ -3,10 +3,11 @@
 //
 // Resolution order (first match wins):
 //
-//   1. JFROG_PACKAGE_GUARD_ENABLED≠1       → mode="off" (opt-in gate; default
-//      when unset so first-time installs stay silent until an admin configures
-//      the flag).
-//   2. jf config (via jf-identity)           → mode="active" when identity is
+//   1. JFROG_PACKAGE_GUARD_DISABLE=1       → mode="off" (env kill switch;
+//      a future JFROG_PACKAGE_GUARD_FORCE_* may override this)
+//   2. packageGuard.enabled !== true in     → mode="off" (file-primary gate;
+//      ~/.jfrog/agents.json                    default off in shipped template)
+//   3. jf config (via jf-identity)          → mode="active" when identity is
 //      usable; otherwise mode="enforce" with a `cause` (jf-not-installed /
 //      jf-not-configured) so the session hook can inject a targeted,
 //      remediation-focused advisory notice.
@@ -17,32 +18,40 @@
 //   "enforce" — jf missing/unconfigured: inject the advisory "routing not
 //               ready" notice (no resolved URLs). This is advisory steering,
 //               not a hard block — real enforcement is durable PM config
-//               (jf setup) + server-side Curation. The L2 shell guard that
-//               previously denied direct installs has been removed.
+//               (jf setup) + server-side Curation.
 //
-// Repo keys come from package-guard config + static defaults (resolver.mjs).
-// There is no separate org on/off API.
+// Repo keys come from agents.json defaultGlobalRepos (resolver.mjs).
 
 import process from "node:process";
 
 import { createLogger } from "../../scripts/core/logger.mjs";
+import { getAgentsConfigSection } from "../../scripts/core/agents-config.mjs";
 import { getPlatformIdentity, identityLabel } from "../../scripts/core/jf-identity.mjs";
 
 const log = createLogger("feature-flag");
 
-const ENABLED = process.env.JFROG_PACKAGE_GUARD_ENABLED === "1";
+function isEnvDisabled() {
+  return process.env.JFROG_PACKAGE_GUARD_DISABLE === "1";
+}
+
+function isEnabledInConfig() {
+  const pg = getAgentsConfigSection("packageGuard");
+  return pg?.enabled === true;
+}
 
 export async function isPackageGuardEnabled() {
-  if (!ENABLED) {
+  if (isEnvDisabled()) {
+    log.debug("off", { reason: "DISABLE" });
+    return { mode: "off", reason: "DISABLE", identity: "none", cause: "ok" };
+  }
+
+  if (!isEnabledInConfig()) {
     log.debug("off", { reason: "NOT_ENABLED" });
     return { mode: "off", reason: "NOT_ENABLED", identity: "none", cause: "ok" };
   }
 
   const { identity, cause } = getPlatformIdentity();
   if (!identity) {
-    // jf missing/unconfigured: inject the advisory "routing not ready" notice
-    // rather than the normal URL policy. NOT_ENABLED (handled above)
-    // suppresses injection entirely.
     log.debug("enforce", { reason: "missing-identity", cause });
     return { mode: "enforce", reason: "missing-identity", identity: "none", cause };
   }
